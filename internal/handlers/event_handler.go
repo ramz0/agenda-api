@@ -13,11 +13,13 @@ import (
 )
 
 type EventHandler struct {
-	eventRepo *repository.EventRepository
+	eventRepo      *repository.EventRepository
+	teamRepo       *repository.TeamRepository
+	assignmentRepo *repository.AssignmentRepository
 }
 
-func NewEventHandler(eventRepo *repository.EventRepository) *EventHandler {
-	return &EventHandler{eventRepo: eventRepo}
+func NewEventHandler(eventRepo *repository.EventRepository, teamRepo *repository.TeamRepository, assignmentRepo *repository.AssignmentRepository) *EventHandler {
+	return &EventHandler{eventRepo: eventRepo, teamRepo: teamRepo, assignmentRepo: assignmentRepo}
 }
 
 func (h *EventHandler) Create(c *gin.Context) {
@@ -38,7 +40,38 @@ func (h *EventHandler) Create(c *gin.Context) {
 		status = models.EventStatusDraft
 	}
 
+	eventType := input.Type
+	if eventType == "" {
+		eventType = models.EventTypePersonal
+	}
+
 	userID := middleware.GetUserID(c)
+	userRole := middleware.GetUserRole(c)
+
+	// Only admins can create team events
+	if eventType == models.EventTypeTeam && userRole != models.RoleAdmin {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Only admins can create team events"})
+		return
+	}
+
+	// Team events require a team
+	if eventType == models.EventTypeTeam && input.TeamID == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Team events require a teamId"})
+		return
+	}
+
+	// Verify team exists if teamId provided
+	if input.TeamID != nil {
+		_, err := h.teamRepo.GetByID(*input.TeamID)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Team not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch team"})
+			return
+		}
+	}
 
 	event := &models.Event{
 		ID:          uuid.New(),
@@ -50,8 +83,9 @@ func (h *EventHandler) Create(c *gin.Context) {
 		Location:    input.Location,
 		Capacity:    input.Capacity,
 		Status:      status,
+		Type:        eventType,
+		TeamID:      input.TeamID,
 		CreatedBy:   userID,
-		SpeakerID:   input.SpeakerID,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
@@ -61,7 +95,36 @@ func (h *EventHandler) Create(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, event)
+	// If team event, create assignments for all team members
+	if eventType == models.EventTypeTeam && input.TeamID != nil {
+		members, err := h.teamRepo.GetMembers(*input.TeamID)
+		if err == nil && len(members) > 0 {
+			var assignments []models.EventAssignment
+			for _, member := range members {
+				assignments = append(assignments, models.EventAssignment{
+					ID:         uuid.New(),
+					EventID:    event.ID,
+					UserID:     member.UserID,
+					Status:     models.AssignmentStatusPending,
+					AssignedAt: time.Now(),
+				})
+			}
+			h.assignmentRepo.CreateBatch(assignments)
+		}
+	}
+
+	// Set participants for personal events
+	if len(input.ParticipantIds) > 0 {
+		h.eventRepo.SetParticipants(event.ID, input.ParticipantIds)
+	}
+
+	// Return event with participants
+	eventWithParticipants, err := h.eventRepo.GetByIDWithParticipants(event.ID)
+	if err != nil {
+		c.JSON(http.StatusCreated, event)
+		return
+	}
+	c.JSON(http.StatusCreated, eventWithParticipants)
 }
 
 func (h *EventHandler) GetAll(c *gin.Context) {
@@ -77,6 +140,10 @@ func (h *EventHandler) GetAll(c *gin.Context) {
 		return
 	}
 
+	if events == nil {
+		events = []models.EventWithAttendeeCount{}
+	}
+
 	c.JSON(http.StatusOK, events)
 }
 
@@ -87,7 +154,7 @@ func (h *EventHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	event, err := h.eventRepo.GetByID(id)
+	event, err := h.eventRepo.GetByIDWithParticipants(id)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Event not found"})
@@ -120,8 +187,9 @@ func (h *EventHandler) Update(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	userRole := middleware.GetUserRole(c)
 
-	if userRole != models.RoleAdmin && (event.SpeakerID == nil || *event.SpeakerID != userID) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "You can only update events you are assigned to"})
+	// Admins can edit any event, users can only edit their personal events
+	if userRole != models.RoleAdmin && event.CreatedBy != userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "You can only update your own events"})
 		return
 	}
 
@@ -155,13 +223,10 @@ func (h *EventHandler) Update(c *gin.Context) {
 		event.Location = *input.Location
 	}
 	if input.Capacity != nil {
-		event.Capacity = *input.Capacity
+		event.Capacity = input.Capacity
 	}
 	if input.Status != nil {
 		event.Status = *input.Status
-	}
-	if input.SpeakerID != nil {
-		event.SpeakerID = input.SpeakerID
 	}
 
 	if err := h.eventRepo.Update(event); err != nil {
@@ -169,7 +234,18 @@ func (h *EventHandler) Update(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, event)
+	// Update participants if provided
+	if input.ParticipantIds != nil {
+		h.eventRepo.SetParticipants(event.ID, input.ParticipantIds)
+	}
+
+	// Return event with participants
+	eventWithParticipants, err := h.eventRepo.GetByIDWithParticipants(event.ID)
+	if err != nil {
+		c.JSON(http.StatusOK, event)
+		return
+	}
+	c.JSON(http.StatusOK, eventWithParticipants)
 }
 
 func (h *EventHandler) Delete(c *gin.Context) {
@@ -214,5 +290,85 @@ func (h *EventHandler) GetCalendar(c *gin.Context) {
 		return
 	}
 
+	if events == nil {
+		events = []models.EventWithAttendeeCount{}
+	}
+
 	c.JSON(http.StatusOK, events)
+}
+
+func (h *EventHandler) GetMyCalendar(c *gin.Context) {
+	startStr := c.Query("start")
+	endStr := c.Query("end")
+
+	if startStr == "" || endStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "start and end query parameters are required"})
+		return
+	}
+
+	start, err := time.Parse("2006-01-02", startStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid start date format. Use YYYY-MM-DD"})
+		return
+	}
+
+	end, err := time.Parse("2006-01-02", endStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid end date format. Use YYYY-MM-DD"})
+		return
+	}
+
+	userID := middleware.GetUserID(c)
+
+	events, err := h.eventRepo.GetCalendarByUserID(userID, start, end)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch events"})
+		return
+	}
+
+	if events == nil {
+		events = []models.EventWithAssignment{}
+	}
+
+	c.JSON(http.StatusOK, events)
+}
+
+func (h *EventHandler) GetMyEvents(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	eventType := c.Query("type")
+
+	if eventType == "personal" {
+		events, err := h.eventRepo.GetPersonalByUserID(userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch events"})
+			return
+		}
+		if events == nil {
+			events = []models.Event{}
+		}
+		c.JSON(http.StatusOK, events)
+		return
+	}
+
+	if eventType == "team" {
+		events, err := h.eventRepo.GetTeamEventsByUserID(userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch events"})
+			return
+		}
+		if events == nil {
+			events = []models.EventWithAssignment{}
+		}
+		c.JSON(http.StatusOK, events)
+		return
+	}
+
+	// Return all events for the user
+	personalEvents, _ := h.eventRepo.GetPersonalByUserID(userID)
+	teamEvents, _ := h.eventRepo.GetTeamEventsByUserID(userID)
+
+	c.JSON(http.StatusOK, gin.H{
+		"personal": personalEvents,
+		"team":     teamEvents,
+	})
 }

@@ -53,7 +53,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 
 	role := input.Role
 	if role == "" {
-		role = models.RoleAttendee
+		role = models.RoleUser
 	}
 
 	user := &models.User{

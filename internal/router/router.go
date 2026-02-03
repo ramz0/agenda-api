@@ -4,7 +4,6 @@ import (
 	"agenda-api/internal/config"
 	"agenda-api/internal/handlers"
 	"agenda-api/internal/middleware"
-	"agenda-api/internal/models"
 	"agenda-api/internal/repository"
 
 	"github.com/gin-gonic/gin"
@@ -17,16 +16,24 @@ func Setup(db *sqlx.DB, cfg *config.Config) *gin.Engine {
 
 	r.Use(middleware.CORS())
 
+	// Repositories
 	userRepo := repository.NewUserRepository(db)
 	eventRepo := repository.NewEventRepository(db)
 	attendanceRepo := repository.NewAttendanceRepository(db)
+	teamRepo := repository.NewTeamRepository(db)
+	assignmentRepo := repository.NewAssignmentRepository(db)
 
+	// Handlers
 	authHandler := handlers.NewAuthHandler(userRepo, cfg.JWTSecret, cfg.JWTExpirationHours)
-	eventHandler := handlers.NewEventHandler(eventRepo)
+	eventHandler := handlers.NewEventHandler(eventRepo, teamRepo, assignmentRepo)
 	attendanceHandler := handlers.NewAttendanceHandler(attendanceRepo, eventRepo)
+	teamHandler := handlers.NewTeamHandler(teamRepo, userRepo)
+	assignmentHandler := handlers.NewAssignmentHandler(assignmentRepo, eventRepo)
+	userHandler := handlers.NewUserHandler(userRepo)
 
 	api := r.Group("/api")
 	{
+		// Auth routes
 		auth := api.Group("/auth")
 		{
 			auth.POST("/register", authHandler.Register)
@@ -34,21 +41,21 @@ func Setup(db *sqlx.DB, cfg *config.Config) *gin.Engine {
 			auth.GET("/me", middleware.JWTAuth(cfg.JWTSecret), authHandler.Me)
 		}
 
+		// Events routes (public)
 		events := api.Group("/events")
 		{
 			events.GET("", eventHandler.GetAll)
 			events.GET("/calendar", eventHandler.GetCalendar)
 			events.GET("/:id", eventHandler.GetByID)
 
+			// Protected event routes
 			events.POST("",
 				middleware.JWTAuth(cfg.JWTSecret),
-				middleware.RequireAdmin(),
 				eventHandler.Create,
 			)
 
 			events.PATCH("/:id",
 				middleware.JWTAuth(cfg.JWTSecret),
-				middleware.RequireAdminOrSpeaker(),
 				eventHandler.Update,
 			)
 
@@ -58,29 +65,118 @@ func Setup(db *sqlx.DB, cfg *config.Config) *gin.Engine {
 				eventHandler.Delete,
 			)
 
+			// Attendance routes
 			events.POST("/:id/register",
 				middleware.JWTAuth(cfg.JWTSecret),
-				middleware.RequireRoles(models.RoleAttendee),
 				attendanceHandler.Register,
 			)
 
 			events.DELETE("/:id/register",
 				middleware.JWTAuth(cfg.JWTSecret),
-				middleware.RequireRoles(models.RoleAttendee),
 				attendanceHandler.Cancel,
 			)
 
 			events.GET("/:id/attendees",
 				middleware.JWTAuth(cfg.JWTSecret),
-				middleware.RequireAdminOrSpeaker(),
+				middleware.RequireAdmin(),
 				attendanceHandler.GetAttendees,
+			)
+
+			// Assignment routes for events
+			events.GET("/:id/assignments",
+				middleware.JWTAuth(cfg.JWTSecret),
+				middleware.RequireAdmin(),
+				assignmentHandler.GetByEventID,
+			)
+
+			events.POST("/:id/assignments/respond",
+				middleware.JWTAuth(cfg.JWTSecret),
+				assignmentHandler.Respond,
 			)
 		}
 
-		api.GET("/my-registrations",
-			middleware.JWTAuth(cfg.JWTSecret),
-			attendanceHandler.GetMyRegistrations,
-		)
+		// Users routes
+		users := api.Group("/users")
+		{
+			users.GET("/search",
+				middleware.JWTAuth(cfg.JWTSecret),
+				userHandler.Search,
+			)
+
+			users.GET("",
+				middleware.JWTAuth(cfg.JWTSecret),
+				middleware.RequireAdmin(),
+				userHandler.GetAll,
+			)
+
+			users.GET("/:id",
+				middleware.JWTAuth(cfg.JWTSecret),
+				userHandler.GetByID,
+			)
+		}
+
+		// Teams routes (admin only for management)
+		teams := api.Group("/teams")
+		{
+			teams.GET("",
+				middleware.JWTAuth(cfg.JWTSecret),
+				middleware.RequireAdmin(),
+				teamHandler.GetAll,
+			)
+
+			teams.POST("",
+				middleware.JWTAuth(cfg.JWTSecret),
+				middleware.RequireAdmin(),
+				teamHandler.Create,
+			)
+
+			teams.GET("/:id",
+				middleware.JWTAuth(cfg.JWTSecret),
+				teamHandler.GetByID,
+			)
+
+			teams.PATCH("/:id",
+				middleware.JWTAuth(cfg.JWTSecret),
+				middleware.RequireAdmin(),
+				teamHandler.Update,
+			)
+
+			teams.DELETE("/:id",
+				middleware.JWTAuth(cfg.JWTSecret),
+				middleware.RequireAdmin(),
+				teamHandler.Delete,
+			)
+
+			// Team members
+			teams.GET("/:id/members",
+				middleware.JWTAuth(cfg.JWTSecret),
+				teamHandler.GetMembers,
+			)
+
+			teams.POST("/:id/members",
+				middleware.JWTAuth(cfg.JWTSecret),
+				middleware.RequireAdmin(),
+				teamHandler.AddMember,
+			)
+
+			teams.DELETE("/:id/members/:userId",
+				middleware.JWTAuth(cfg.JWTSecret),
+				middleware.RequireAdmin(),
+				teamHandler.RemoveMember,
+			)
+		}
+
+		// My routes (user's personal data)
+		my := api.Group("/my")
+		my.Use(middleware.JWTAuth(cfg.JWTSecret))
+		{
+			my.GET("/calendar", eventHandler.GetMyCalendar)
+			my.GET("/events", eventHandler.GetMyEvents)
+			my.GET("/teams", teamHandler.GetMyTeams)
+			my.GET("/assignments", assignmentHandler.GetMyAssignments)
+			my.GET("/assignments/pending-count", assignmentHandler.GetPendingCount)
+			my.GET("/registrations", attendanceHandler.GetMyRegistrations)
+		}
 	}
 
 	return r

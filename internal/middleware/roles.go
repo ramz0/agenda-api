@@ -27,6 +27,6 @@ func RequireAdmin() gin.HandlerFunc {
 	return RequireRoles(models.RoleAdmin)
 }
 
-func RequireAdminOrSpeaker() gin.HandlerFunc {
-	return RequireRoles(models.RoleAdmin, models.RoleSpeaker)
+func RequireUser() gin.HandlerFunc {
+	return RequireRoles(models.RoleUser, models.RoleAdmin)
 }

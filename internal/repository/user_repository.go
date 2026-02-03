@@ -67,3 +67,15 @@ func (r *UserRepository) GetByRole(role models.Role) ([]models.User, error) {
 	err := r.db.Select(&users, query, role)
 	return users, err
 }
+
+func (r *UserRepository) Search(query string) ([]models.User, error) {
+	var users []models.User
+	searchQuery := `
+		SELECT * FROM users
+		WHERE name ILIKE $1 OR email ILIKE $1
+		ORDER BY name
+		LIMIT 20`
+	searchPattern := "%" + query + "%"
+	err := r.db.Select(&users, searchQuery, searchPattern)
+	return users, err
+}

@@ -60,7 +60,7 @@ func (h *AttendanceHandler) Register(c *gin.Context) {
 		return
 	}
 
-	if count >= event.Capacity {
+	if event.Capacity != nil && count >= *event.Capacity {
 		c.JSON(http.StatusConflict, gin.H{"error": "Event is at full capacity"})
 		return
 	}
@@ -138,7 +138,8 @@ func (h *AttendanceHandler) GetAttendees(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	userRole := middleware.GetUserRole(c)
 
-	if userRole != models.RoleAdmin && (event.SpeakerID == nil || *event.SpeakerID != userID) {
+	// Admins can see any attendees, users can only see attendees for their own events
+	if userRole != models.RoleAdmin && event.CreatedBy != userID {
 		c.JSON(http.StatusForbidden, gin.H{"error": "You can only view attendees for your events"})
 		return
 	}
