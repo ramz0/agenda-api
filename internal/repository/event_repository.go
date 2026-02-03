@@ -122,7 +122,7 @@ func (r *EventRepository) GetTeamEventsByUserID(userID uuid.UUID) ([]models.Even
 		FROM events e
 		INNER JOIN event_assignments ea ON e.id = ea.event_id
 		LEFT JOIN teams t ON e.team_id = t.id
-		WHERE ea.user_id = $1 AND e.type = 'team'
+		WHERE ea.user_id = $1 AND e.status = 'published'
 		ORDER BY e.date, e.start_time`
 	err := r.db.Select(&events, query, userID)
 	return events, err
