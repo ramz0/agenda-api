@@ -147,6 +147,7 @@ func (r *EventRepository) GetCalendarByUserID(userID uuid.UUID, start, end time.
 		  AND (
 		    (e.type = 'personal' AND e.created_by = $1)
 		    OR (e.type = 'team' AND ea.user_id = $1)
+		    OR (ea.user_id = $1 AND ea.status = 'approved')
 		  )
 		ORDER BY e.date, e.start_time`
 	err := r.db.Select(&events, query, userID, start, end)
