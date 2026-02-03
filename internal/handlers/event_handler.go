@@ -363,7 +363,7 @@ func (h *EventHandler) GetMyEvents(c *gin.Context) {
 			return
 		}
 		if events == nil {
-			events = []models.Event{}
+			events = []models.EventWithParticipantCount{}
 		}
 		c.JSON(http.StatusOK, events)
 		return
@@ -376,7 +376,7 @@ func (h *EventHandler) GetMyEvents(c *gin.Context) {
 			return
 		}
 		if events == nil {
-			events = []models.EventWithAssignment{}
+			events = []models.EventWithAssignmentAndCount{}
 		}
 		c.JSON(http.StatusOK, events)
 		return

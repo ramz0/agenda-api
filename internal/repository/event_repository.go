@@ -108,21 +108,32 @@ func (r *EventRepository) GetByCreatedBy(userID uuid.UUID) ([]models.Event, erro
 	return events, err
 }
 
-func (r *EventRepository) GetPersonalByUserID(userID uuid.UUID) ([]models.Event, error) {
-	var events []models.Event
-	query := `SELECT * FROM events WHERE type = 'personal' AND created_by = $1 ORDER BY date, start_time`
+func (r *EventRepository) GetPersonalByUserID(userID uuid.UUID) ([]models.EventWithParticipantCount, error) {
+	var events []models.EventWithParticipantCount
+	query := `
+		SELECT e.*, t.name as team_name,
+		       COALESCE(COUNT(ea.id), 0) as participant_count
+		FROM events e
+		LEFT JOIN teams t ON e.team_id = t.id
+		LEFT JOIN event_assignments ea ON e.id = ea.event_id
+		WHERE e.type = 'personal' AND e.created_by = $1
+		GROUP BY e.id, t.name
+		ORDER BY e.date, e.start_time`
 	err := r.db.Select(&events, query, userID)
 	return events, err
 }
 
-func (r *EventRepository) GetTeamEventsByUserID(userID uuid.UUID) ([]models.EventWithAssignment, error) {
-	var events []models.EventWithAssignment
+func (r *EventRepository) GetTeamEventsByUserID(userID uuid.UUID) ([]models.EventWithAssignmentAndCount, error) {
+	var events []models.EventWithAssignmentAndCount
 	query := `
-		SELECT e.*, ea.status as assignment_status, t.name as team_name
+		SELECT e.*, ea_user.status as assignment_status, t.name as team_name,
+		       COALESCE(COUNT(ea_all.id), 0) as participant_count
 		FROM events e
-		INNER JOIN event_assignments ea ON e.id = ea.event_id
+		INNER JOIN event_assignments ea_user ON e.id = ea_user.event_id AND ea_user.user_id = $1
 		LEFT JOIN teams t ON e.team_id = t.id
-		WHERE ea.user_id = $1 AND e.status = 'published'
+		LEFT JOIN event_assignments ea_all ON e.id = ea_all.event_id
+		WHERE e.status = 'published'
+		GROUP BY e.id, ea_user.status, t.name
 		ORDER BY e.date, e.start_time`
 	err := r.db.Select(&events, query, userID)
 	return events, err

@@ -90,3 +90,16 @@ type EventWithParticipants struct {
 	TeamName      *string            `db:"team_name" json:"teamName,omitempty"`
 	Participants  []EventParticipant `json:"participants,omitempty"`
 }
+
+type EventWithParticipantCount struct {
+	Event
+	ParticipantCount int     `db:"participant_count" json:"participantCount"`
+	TeamName         *string `db:"team_name" json:"teamName,omitempty"`
+}
+
+type EventWithAssignmentAndCount struct {
+	Event
+	AssignmentStatus *AssignmentStatus `db:"assignment_status" json:"assignmentStatus,omitempty"`
+	TeamName         *string           `db:"team_name" json:"teamName,omitempty"`
+	ParticipantCount int               `db:"participant_count" json:"participantCount"`
+}
