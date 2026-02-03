@@ -37,7 +37,7 @@ func (h *EventHandler) Create(c *gin.Context) {
 
 	status := input.Status
 	if status == "" {
-		status = models.EventStatusDraft
+		status = models.EventStatusPublished
 	}
 
 	eventType := input.Type
@@ -114,8 +114,8 @@ func (h *EventHandler) Create(c *gin.Context) {
 	}
 
 	// Set participants for personal events
-	if len(input.ParticipantIds) > 0 {
-		h.eventRepo.SetParticipants(event.ID, input.ParticipantIds)
+	if len(input.Participants) > 0 {
+		h.eventRepo.SetParticipants(event.ID, input.Participants)
 	}
 
 	// Return event with participants
@@ -235,8 +235,8 @@ func (h *EventHandler) Update(c *gin.Context) {
 	}
 
 	// Update participants if provided
-	if input.ParticipantIds != nil {
-		h.eventRepo.SetParticipants(event.ID, input.ParticipantIds)
+	if input.Participants != nil {
+		h.eventRepo.SetParticipants(event.ID, input.Participants)
 	}
 
 	// Return event with participants

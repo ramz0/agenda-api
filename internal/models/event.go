@@ -39,31 +39,31 @@ type Event struct {
 }
 
 type CreateEventInput struct {
-	Title          string      `json:"title" binding:"required"`
-	Description    string      `json:"description"`
-	Date           string      `json:"date" binding:"required"`
-	StartTime      string      `json:"startTime" binding:"required"`
-	EndTime        string      `json:"endTime" binding:"required"`
-	Location       string      `json:"location"`
-	Capacity       *int        `json:"capacity"`
-	Status         EventStatus `json:"status"`
-	Type           EventType   `json:"type"`
-	TeamID         *uuid.UUID  `json:"teamId"`
-	ParticipantIds []uuid.UUID `json:"participantIds"`
+	Title        string             `json:"title" binding:"required"`
+	Description  string             `json:"description"`
+	Date         string             `json:"date" binding:"required"`
+	StartTime    string             `json:"startTime" binding:"required"`
+	EndTime      string             `json:"endTime" binding:"required"`
+	Location     string             `json:"location"`
+	Capacity     *int               `json:"capacity"`
+	Status       EventStatus        `json:"status"`
+	Type         EventType          `json:"type"`
+	TeamID       *uuid.UUID         `json:"teamId"`
+	Participants []ParticipantInput `json:"participants"`
 }
 
 type UpdateEventInput struct {
-	Title          *string      `json:"title"`
-	Description    *string      `json:"description"`
-	Date           *string      `json:"date"`
-	StartTime      *string      `json:"startTime"`
-	EndTime        *string      `json:"endTime"`
-	Location       *string      `json:"location"`
-	Capacity       *int         `json:"capacity"`
-	Status         *EventStatus `json:"status"`
-	Type           *EventType   `json:"type"`
-	TeamID         *uuid.UUID   `json:"teamId"`
-	ParticipantIds []uuid.UUID  `json:"participantIds"`
+	Title        *string            `json:"title"`
+	Description  *string            `json:"description"`
+	Date         *string            `json:"date"`
+	StartTime    *string            `json:"startTime"`
+	EndTime      *string            `json:"endTime"`
+	Location     *string            `json:"location"`
+	Capacity     *int               `json:"capacity"`
+	Status       *EventStatus       `json:"status"`
+	Type         *EventType         `json:"type"`
+	TeamID       *uuid.UUID         `json:"teamId"`
+	Participants []ParticipantInput `json:"participants"`
 }
 
 type EventWithAttendeeCount struct {
@@ -78,10 +78,24 @@ type EventWithAssignment struct {
 	TeamName         *string           `db:"team_name" json:"teamName,omitempty"`
 }
 
+type ParticipantRole string
+
+const (
+	ParticipantRoleSpeaker     ParticipantRole = "speaker"
+	ParticipantRoleAssistant   ParticipantRole = "attendee"
+	ParticipantRoleParticipant ParticipantRole = "participant"
+)
+
 type EventParticipant struct {
-	UserID    uuid.UUID `db:"user_id" json:"userId"`
-	UserName  string    `db:"user_name" json:"userName,omitempty"`
-	UserEmail string    `db:"user_email" json:"userEmail,omitempty"`
+	UserID    uuid.UUID       `db:"user_id" json:"userId"`
+	UserName  string          `db:"user_name" json:"userName,omitempty"`
+	UserEmail string          `db:"user_email" json:"userEmail,omitempty"`
+	Role      ParticipantRole `db:"role" json:"role"`
+}
+
+type ParticipantInput struct {
+	UserID uuid.UUID       `json:"userId"`
+	Role   ParticipantRole `json:"role"`
 }
 
 type EventWithParticipants struct {

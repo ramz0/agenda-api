@@ -192,10 +192,11 @@ func (r *EventRepository) GetByIDWithParticipants(id uuid.UUID) (*models.EventWi
 func (r *EventRepository) GetParticipants(eventID uuid.UUID) ([]models.EventParticipant, error) {
 	var participants []models.EventParticipant
 	query := `
-		SELECT ea.user_id, u.name as user_name, u.email as user_email
+		SELECT ea.user_id, u.name as user_name, u.email as user_email, ea.role
 		FROM event_assignments ea
 		INNER JOIN users u ON ea.user_id = u.id
-		WHERE ea.event_id = $1`
+		WHERE ea.event_id = $1
+		ORDER BY ea.role, u.name`
 	err := r.db.Select(&participants, query, eventID)
 	if err != nil {
 		return nil, err
@@ -203,20 +204,24 @@ func (r *EventRepository) GetParticipants(eventID uuid.UUID) ([]models.EventPart
 	return participants, nil
 }
 
-func (r *EventRepository) SetParticipants(eventID uuid.UUID, participantIds []uuid.UUID) error {
+func (r *EventRepository) SetParticipants(eventID uuid.UUID, participants []models.ParticipantInput) error {
 	// Delete existing participants for this event
 	_, err := r.db.Exec(`DELETE FROM event_assignments WHERE event_id = $1`, eventID)
 	if err != nil {
 		return err
 	}
 
-	// Insert new participants
-	if len(participantIds) > 0 {
+	// Insert new participants with roles
+	if len(participants) > 0 {
 		query := `
-			INSERT INTO event_assignments (id, event_id, user_id, status, assigned_at)
-			VALUES ($1, $2, $3, 'approved', $4)`
-		for _, userID := range participantIds {
-			_, err := r.db.Exec(query, uuid.New(), eventID, userID, time.Now())
+			INSERT INTO event_assignments (id, event_id, user_id, status, role, assigned_at)
+			VALUES ($1, $2, $3, 'approved', $4, $5)`
+		for _, p := range participants {
+			role := p.Role
+			if role == "" {
+				role = models.ParticipantRoleParticipant
+			}
+			_, err := r.db.Exec(query, uuid.New(), eventID, p.UserID, role, time.Now())
 			if err != nil {
 				return err
 			}
