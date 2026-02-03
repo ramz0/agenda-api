@@ -255,6 +255,25 @@ func (h *EventHandler) Delete(c *gin.Context) {
 		return
 	}
 
+	event, err := h.eventRepo.GetByID(id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Event not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch event"})
+		return
+	}
+
+	userID := middleware.GetUserID(c)
+	userRole := middleware.GetUserRole(c)
+
+	// Admins can delete any event, users can only delete their own events
+	if userRole != models.RoleAdmin && event.CreatedBy != userID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "You can only delete your own events"})
+		return
+	}
+
 	if err := h.eventRepo.Delete(id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete event"})
 		return

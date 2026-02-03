@@ -61,7 +61,6 @@ func Setup(db *sqlx.DB, cfg *config.Config) *gin.Engine {
 
 			events.DELETE("/:id",
 				middleware.JWTAuth(cfg.JWTSecret),
-				middleware.RequireAdmin(),
 				eventHandler.Delete,
 			)
 
@@ -78,14 +77,12 @@ func Setup(db *sqlx.DB, cfg *config.Config) *gin.Engine {
 
 			events.GET("/:id/attendees",
 				middleware.JWTAuth(cfg.JWTSecret),
-				middleware.RequireAdmin(),
 				attendanceHandler.GetAttendees,
 			)
 
 			// Assignment routes for events
 			events.GET("/:id/assignments",
 				middleware.JWTAuth(cfg.JWTSecret),
-				middleware.RequireAdmin(),
 				assignmentHandler.GetByEventID,
 			)
 
@@ -105,7 +102,6 @@ func Setup(db *sqlx.DB, cfg *config.Config) *gin.Engine {
 
 			users.GET("",
 				middleware.JWTAuth(cfg.JWTSecret),
-				middleware.RequireAdmin(),
 				userHandler.GetAll,
 			)
 
@@ -120,13 +116,11 @@ func Setup(db *sqlx.DB, cfg *config.Config) *gin.Engine {
 		{
 			teams.GET("",
 				middleware.JWTAuth(cfg.JWTSecret),
-				middleware.RequireAdmin(),
 				teamHandler.GetAll,
 			)
 
 			teams.POST("",
 				middleware.JWTAuth(cfg.JWTSecret),
-				middleware.RequireAdmin(),
 				teamHandler.Create,
 			)
 
@@ -137,13 +131,11 @@ func Setup(db *sqlx.DB, cfg *config.Config) *gin.Engine {
 
 			teams.PATCH("/:id",
 				middleware.JWTAuth(cfg.JWTSecret),
-				middleware.RequireAdmin(),
 				teamHandler.Update,
 			)
 
 			teams.DELETE("/:id",
 				middleware.JWTAuth(cfg.JWTSecret),
-				middleware.RequireAdmin(),
 				teamHandler.Delete,
 			)
 
@@ -155,13 +147,11 @@ func Setup(db *sqlx.DB, cfg *config.Config) *gin.Engine {
 
 			teams.POST("/:id/members",
 				middleware.JWTAuth(cfg.JWTSecret),
-				middleware.RequireAdmin(),
 				teamHandler.AddMember,
 			)
 
 			teams.DELETE("/:id/members/:userId",
 				middleware.JWTAuth(cfg.JWTSecret),
-				middleware.RequireAdmin(),
 				teamHandler.RemoveMember,
 			)
 		}
